@@ -1,0 +1,68 @@
+# Copie para sites.yaml. ${VAR} é substituído por variáveis de ambiente (.env).
+# Para outro site com o mesmo padrão de API, adicione outra entrada em `sites`.
+ai:
+  enabled: true
+  provider: google_genai        # qualquer provedor suportado pelo LangChain init_chat_model
+  model: gemini-2.5-flash
+  api_key_env: GOOGLE_API_KEY   # nome da variável de ambiente com a chave
+
+sites:
+  llmagazine:
+    display_name: LL Magazine
+    base_url: ${LLMAGAZINE_URL}
+    allowed_user_ids: [123456789]   # Telegram IDs autorizados neste site
+    auth:
+      endpoint: /api/auth.php
+      body: { action: login, username: "${LLMAGAZINE_USER}", password: "${LLMAGAZINE_PASS}" }
+      token_field: token
+      header: "Authorization: Bearer {token}"
+    upload:
+      endpoint: /api/admin/upload.php
+      file_field: image
+      response_path_field: path
+    create:
+      endpoint: /api/admin/products.php
+      success_field: success
+      id_field: product_id
+    image_field: image
+    image:
+      allowed_formats: [jpeg, png, gif, webp, avif]
+      max_bytes: 5242880
+      min_width: 300
+      min_height: 300
+      auto_convert_to: jpeg
+      auto_compress: true
+    color_map:                      # nome -> hex usado quando o campo colors tem output: hex
+      preto: "#000000"
+      branco: "#FFFFFF"
+      cinza: "#808080"
+      vermelho: "#DC2626"
+      rosa: "#FF69B4"
+      azul: "#3B82F6"
+      azul marinho: "#000080"
+      verde: "#10B981"
+      amarelo: "#FBBF24"
+      laranja: "#F97316"
+      roxo: "#9333EA"
+      marrom: "#92400E"
+      bege: "#F5F5DC"
+      nude: "#E8C6B5"
+      vinho: "#722F37"
+      dourado: "#FFD700"
+      prateado: "#C0C0C0"
+    fields:
+      - { key: name, label: Nome, type: text, required: true, ai: true, max_len: 255, prompt: "Qual o nome do produto?" }
+      - key: category
+        label: Categoria
+        type: choice
+        required: true
+        ai: true
+        options_from: { endpoint: "/api/products.php?categories=1&admin=1", value: id, label: name, exclude: [all] }
+      - { key: price, label: Preço, type: price, required: true, prompt: "Qual o preço? (ex: 179,90)" }
+      - { key: originalPrice, label: Preço original, type: price, prompt: "Preço original (antes do desconto)?" }
+      - { key: discount, label: Desconto, type: int, min: 0, max: 100, discount_from: [originalPrice, price] }
+      - { key: description, label: Descrição, type: text, required: true, ai: true }
+      - { key: colors, label: Cores, type: colors, output: hex, ai: true, prompt: "Cores disponíveis? (separe por vírgula)" }
+      - { key: sizes, label: Tamanhos, type: multichoice, options: [PP, P, M, G, GG, U], default: [PP, P, M, G, GG] }
+      - { key: inStock, label: Em estoque, type: bool, default: true, as_int: true }
+      - { key: featured, label: Destaque, type: bool, default: false, as_int: true }
