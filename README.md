@@ -2,16 +2,63 @@
 
 Bot do Telegram que cadastra produtos em sites via API de admin. Você envia a foto, o bot valida a imagem, a IA sugere os campos, ele pergunta o que faltar e cadastra. **Nada é fixo no código**: tudo de um site vem do `sites.yaml`, então o mesmo bot atende outros sites com o mesmo padrão de API (login → upload de imagem → criação do produto).
 
-## Como usar
+## Ambiente de desenvolvimento
+
+### Pré-requisitos
+
+- Python 3.12+ e [uv](https://docs.astral.sh/uv/)
+- Docker e Docker Compose (só para testar a divulgação no WhatsApp)
+- Um bot do Telegram, um usuário admin no site e uma chave da IA (Gemini)
+
+### Passo a passo
 
 1. Crie o bot no [@BotFather](https://t.me/BotFather) e copie o token.
 2. No site, crie um usuário admin dedicado ao bot (tabela `admin_users` do llmagazine-page).
-3. `cp .env.example .env` e `cp sites.example.yaml sites.yaml`, e preencha:
-   - `.env`: token do bot, URL e credenciais do site, chave da IA.
-   - `sites.yaml`: `allowed_user_ids` com os Telegram IDs autorizados (use o [@userinfobot](https://t.me/userinfobot) para descobrir o seu).
-4. `uv sync && uv run python -m productbot.main`
+3. Clone o repositório e instale as dependências:
 
-No Telegram: `/novo` (ou envie direto uma foto). `/cancelar` interrompe.
+   ```bash
+   git clone https://github.com/hermanoudi/bot-ll-magazine.git
+   cd bot-ll-magazine
+   uv sync
+   ```
+
+4. Crie os arquivos de configuração:
+
+   ```bash
+   cp .env.example .env
+   cp sites.example.yaml sites.yaml
+   ```
+
+   - `.env`: `TELEGRAM_BOT_TOKEN`, `LLMAGAZINE_URL`, `LLMAGAZINE_USER`, `LLMAGAZINE_PASS` e `GOOGLE_API_KEY`.
+   - `sites.yaml`: `allowed_user_ids` com os Telegram IDs autorizados (use o [@userinfobot](https://t.me/userinfobot) para descobrir o seu).
+   - Ambos estão no `.gitignore`; nunca faça commit de segredos.
+
+5. Rode o bot:
+
+   ```bash
+   uv run python -m productbot.main
+   ```
+
+   Use `LOG_LEVEL=DEBUG` para logs mais detalhados. O bot usa polling, então não precisa de domínio nem de porta aberta. Só uma instância pode rodar por token: pare outras (VPS, Docker) antes.
+
+6. No Telegram: `/novo` (ou envie direto uma foto). `/cancelar` interrompe.
+
+### Testes
+
+```bash
+uv run pytest
+```
+
+### Rodando com Docker
+
+```bash
+docker compose up -d --build   # bot + Evolution API + Postgres + Redis
+docker compose logs -f bot
+```
+
+Para desenvolver só o bot em Python e usar a Evolution API do Docker, suba apenas ela (`docker compose up -d evolution-api`) e mantenha `EVOLUTION_URL=http://localhost:8080` no `.env`. Veja [Divulgação no WhatsApp](#divulgação-no-whatsapp) para conectar o número.
+
+Para publicar em VPS ou Railway, trocar o WhatsApp da loja ou liberar outra pessoa no Telegram, veja [docs/DEPLOY.md](docs/DEPLOY.md).
 
 ## Adicionar outro site
 
