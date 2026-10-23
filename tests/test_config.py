@@ -20,6 +20,13 @@ def test_example_loads(app_config, site):
     assert app_config.sites_for(1) == {}
 
 
+def test_share_loaded_and_optional(site):
+    assert site.share.store_name == "LL Magazine"
+    assert site.share.whatsapp_phone == "5534991738581"
+    assert site.share.installments == 3
+    assert site.model_copy(update={"share": None}).share is None
+
+
 def test_missing_file():
     with pytest.raises(ConfigError):
         load_config("/nope.yaml")

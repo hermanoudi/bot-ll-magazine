@@ -1,7 +1,7 @@
 import pytest
 from conftest import make_image
 
-from productbot.ai_suggester import build_draft_model, suggest
+from productbot.ai_suggester import build_draft_model, suggest, suggest_headline
 from productbot.config import AIConfig
 from productbot.image_validator import ValidatedImage
 
@@ -44,6 +44,45 @@ async def test_suggest_ok(site, img):
 async def test_suggest_failure_returns_empty(site, img):
     out = await suggest(AIConfig(enabled=True), img, site.fields, {}, [], llm_factory=lambda ai: FakeLLM(exc=RuntimeError("quota")))
     assert out == {}
+
+
+class HeadlineLLM:
+    def __init__(self, content=None, exc=None):
+        self.content, self.exc, self.messages = content, exc, None
+
+    async def ainvoke(self, messages):
+        self.messages = messages
+        if self.exc:
+            raise self.exc
+        return type("Msg", (), {"content": self.content})()
+
+
+async def test_suggest_headline_normalizes(img):
+    llm = HeadlineLLM('  "até o controle\nganhou roupa de gala!"  ')
+    seen = []
+    out = await suggest_headline(AIConfig(enabled=True), img, "Controle", "Azul",
+                                 llm_factory=lambda ai: seen.append(ai) or llm)
+    assert out == "ATÉ O CONTROLE GANHOU ROUPA DE GALA!"
+    assert seen[0].temperature == 0.9
+    assert "Controle" in llm.messages[1][1][0]["text"]
+
+
+async def test_suggest_headline_content_parts(img):
+    llm = HeadlineLLM([{"type": "text", "text": "olha o achado"}])
+    assert await suggest_headline(AIConfig(enabled=True), img, "X", llm_factory=lambda ai: llm) == "OLHA O ACHADO"
+
+
+async def test_suggest_headline_failure_or_empty_returns_none(img):
+    assert await suggest_headline(AIConfig(enabled=True), img, "X",
+                                  llm_factory=lambda ai: HeadlineLLM(exc=RuntimeError("quota"))) is None
+    assert await suggest_headline(AIConfig(enabled=True), img, "X",
+                                  llm_factory=lambda ai: HeadlineLLM("  ")) is None
+
+
+async def test_suggest_headline_disabled(img):
+    def boom(ai):
+        raise AssertionError("não deveria chamar a IA")
+    assert await suggest_headline(AIConfig(enabled=False), img, "X", llm_factory=boom) is None
 
 
 async def test_suggest_disabled(site, img):

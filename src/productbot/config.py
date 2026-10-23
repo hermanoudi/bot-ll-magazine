@@ -108,6 +108,26 @@ class FieldSpec(BaseModel):
         return self.prompt or f"{self.title}?"
 
 
+class ShareConfig(BaseModel):
+    """Post de divulgação (WhatsApp) gerado após o cadastro."""
+
+    store_name: str
+    whatsapp_phone: str
+    group_id: str | None = None  # grupo de clientes (JID, ex.: 120363...@g.us) que recebe o post
+    installments: int = 0  # 3 -> "(ou 3x de R$ 60,00 sem juros)"; 0/1 = sem parcelamento
+    footer: str = "*Essa promoção pode encerrar a qualquer momento!*"
+    fallback_headlines: list[str] = Field(default_factory=lambda: ["OLHA O ACHADINHO QUE CHEGOU!"])
+    inquiry_intro: str = "Olá! Gostaria de saber mais sobre este produto da {store_name}:"
+    # categoria e descrição na mensagem do link; deixam o post longo demais para caber na legenda da foto
+    inquiry_details: bool = False
+    # chaves dos campos do site usados no post
+    name_field: str = "name"
+    price_field: str = "price"
+    original_price_field: str | None = "originalPrice"
+    category_field: str | None = "category"
+    description_field: str | None = "description"
+
+
 class SiteConfig(BaseModel):
     display_name: str
     base_url: str
@@ -119,6 +139,7 @@ class SiteConfig(BaseModel):
     image: ImageRules = Field(default_factory=ImageRules)
     fields: list[FieldSpec]
     color_map: dict[str, str] = Field(default_factory=dict)
+    share: ShareConfig | None = None
     timeout: float = 30.0
 
     @model_validator(mode="after")
@@ -130,8 +151,23 @@ class SiteConfig(BaseModel):
         return self
 
 
+class WhatsAppConfig(BaseModel):
+    """Gateway Evolution API usado para postar nos grupos."""
+
+    base_url: str
+    instance: str
+    api_key: str
+    timeout: float = 30.0
+
+    @model_validator(mode="after")
+    def _strip_url(self) -> "WhatsAppConfig":
+        self.base_url = self.base_url.rstrip("/")
+        return self
+
+
 class AppConfig(BaseModel):
     ai: AIConfig = Field(default_factory=AIConfig)
+    whatsapp: WhatsAppConfig | None = None
     sites: dict[str, SiteConfig]
 
     def sites_for(self, user_id: int) -> dict[str, SiteConfig]:

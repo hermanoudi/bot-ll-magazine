@@ -24,6 +24,8 @@ async def _post_shutdown(app: Application) -> None:
     clients: dict[str, SiteApiClient] = app.bot_data.get("clients", {})
     for c in clients.values():
         await c.aclose()
+    if wa := app.bot_data.get("wa"):
+        await wa.aclose()
 
 
 def main() -> None:

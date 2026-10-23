@@ -6,6 +6,11 @@ ai:
   model: gemini-2.5-flash
   api_key_env: GOOGLE_API_KEY   # nome da variável de ambiente com a chave
 
+whatsapp:                         # Evolution API (não oficial) que posta nos grupos; opcional
+  base_url: ${EVOLUTION_URL}
+  instance: ${EVOLUTION_INSTANCE}
+  api_key: ${EVOLUTION_API_KEY}
+
 sites:
   llmagazine:
     display_name: LL Magazine
@@ -32,6 +37,11 @@ sites:
       min_height: 300
       auto_convert_to: jpeg
       auto_compress: true
+    share:                          # divulgação no grupo do WhatsApp após o cadastro (opcional)
+      store_name: LL Magazine
+      whatsapp_phone: ${LLMAGAZINE_WHATSAPP}   # DDI+DDD+número, só dígitos
+      group_id: ${LLMAGAZINE_WHATSAPP_GROUP}   # ID do grupo (use /grupos no bot para descobrir)
+      installments: 3
     color_map:                      # nome -> hex usado quando o campo colors tem output: hex
       preto: "#000000"
       branco: "#FFFFFF"

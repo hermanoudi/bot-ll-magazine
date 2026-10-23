@@ -24,6 +24,7 @@ class Draft:
     multi: list[str] = field(default_factory=list)  # seleção em andamento de um multichoice
     pending_photo: tuple[str, str, str | None] | None = None  # (file_id, filename, caption)
     ai_filled: set[str] = field(default_factory=set)
+    share_post: str | None = None  # post da prévia; é exatamente o que vai ao grupo
 
     def spec(self, key: str) -> FieldSpec:
         return next(s for s in self.site.fields if s.key == key)

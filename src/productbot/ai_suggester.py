@@ -61,6 +61,53 @@ def default_llm_factory(ai: AIConfig) -> Any:
     return init_chat_model(ai.model, **kwargs)
 
 
+HEADLINE_PROMPT = (
+    "Crie UMA frase curta, divertida e chamativa para divulgar este produto num grupo de achadinhos "
+    "de WhatsApp. Em português do Brasil, em MAIÚSCULAS, sem emojis, sem preço, com no máximo 60 caracteres. "
+    "Responda só com a frase."
+)
+
+
+def _text_of(content: Any) -> str:
+    if isinstance(content, list):  # alguns provedores devolvem partes {"type": "text", "text": ...}
+        return " ".join(p.get("text", "") if isinstance(p, dict) else str(p) for p in content)
+    return str(content or "")
+
+
+async def suggest_headline(
+    ai: AIConfig,
+    image: ValidatedImage,
+    name: str | None,
+    description: str | None = None,
+    llm_factory: Callable[[AIConfig], Any] = default_llm_factory,
+    timeout: float = 30.0,
+) -> str | None:
+    """Chamada criativa para o post de divulgação. None se desligada, em erro ou vazia."""
+    if not ai.enabled:
+        return None
+    try:
+        llm = llm_factory(ai.model_copy(update={"temperature": 0.9}))  # mais variação a cada "outra chamada"
+        text = HEADLINE_PROMPT
+        if name:
+            text += f"\nProduto: {name}"
+        if description:
+            text += f"\nDescrição: {description}"
+        b64 = base64.b64encode(image.data).decode()
+        messages = [
+            ("system", SYSTEM_PROMPT),
+            ("human", [
+                {"type": "text", "text": text},
+                {"type": "image_url", "image_url": {"url": f"data:{image.content_type};base64,{b64}"}},
+            ]),
+        ]
+        result = await asyncio.wait_for(llm.ainvoke(messages), timeout)
+        line = " ".join(_text_of(result.content).split()).strip(" \"'“”")
+        return line.upper()[:80] or None
+    except Exception:
+        log.exception("Chamada por IA falhou; usando frase padrão")
+        return None
+
+
 async def suggest(
     ai: AIConfig,
     image: ValidatedImage,

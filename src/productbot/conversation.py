@@ -17,16 +17,17 @@ from telegram.ext import (
     filters,
 )
 
-from . import ai_suggester
+from . import ai_suggester, share
 from .api_client import ApiError, SiteApiClient
 from .config import AppConfig
 from .draft import Draft
 from .fields import FieldError, format_value, parse_text_value
 from .image_validator import ImageRejected, validate_image
+from .whatsapp import EvolutionClient, WhatsAppError
 
 log = logging.getLogger(__name__)
 
-SITE, PHOTO, ASK, REVIEW = range(4)
+SITE, PHOTO, ASK, REVIEW, SHARE = range(5)
 DRAFT = "draft"
 IMAGE_FILTER = filters.PHOTO | filters.Document.IMAGE
 
@@ -310,9 +311,117 @@ async def _submit(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
             return REVIEW
     name = format_value(d.spec("name"), d.values.get("name")) if any(s.key == "name" for s in d.site.fields) else "Produto"
     ident = f" (ID {result.id})" if result.id else ""
-    await _reply(update, f"✅ {name} cadastrado em {d.site.display_name}{ident}!\nEnvie /novo para cadastrar outro.")
+    done = f"✅ {name} cadastrado em {d.site.display_name}{ident}!"
+    if d.site.share:
+        await _reply(update, done + "\nQuer divulgar este produto no grupo do WhatsApp?",
+                     reply_markup=_kb([[("📣 Divulgar no WhatsApp", "sh:yes"), ("Agora não", "sh:no")]]))
+        return SHARE
+    await _reply(update, done + "\nEnvie /novo para cadastrar outro.")
     ctx.user_data.pop(DRAFT, None)
     return ConversationHandler.END
+
+
+# ---------- divulgação no WhatsApp ----------
+
+CAPTION_LIMIT = 1024  # legenda de foto no Telegram
+GROUPS_SHOWN = 20
+
+
+async def on_share(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    q = update.callback_query
+    await q.answer()
+    d: Draft | None = ctx.user_data.get(DRAFT)
+    if d is None or d.site.share is None:
+        return ConversationHandler.END
+    lock: asyncio.Lock = ctx.user_data.setdefault("lock", asyncio.Lock())
+    if lock.locked():  # clique duplo
+        return SHARE
+    await q.edit_message_reply_markup(None)
+    if q.data in ("sh:no", "sh:done"):
+        await _reply(update, "Envie /novo para cadastrar outro.")
+        ctx.user_data.pop(DRAFT, None)
+        return ConversationHandler.END
+    if q.data == "sh:send" and d.share_post:
+        return await _send_to_group(update, ctx, d, lock)
+
+    cfg = d.site.share
+    await _reply(update, "✍️ Criando o post…")
+    headline = await ai_suggester.suggest_headline(
+        _cfg(ctx).ai, d.image, d.values.get(cfg.name_field), d.values.get(cfg.description_field)
+    ) or share.fallback_headline(cfg)
+    d.share_post = post = share.build_post(d, cfg, headline)
+    if _can_send(ctx, d):
+        rows = [[("📤 Enviar ao grupo", "sh:send")], [("🔄 Outra chamada", "sh:again"), ("❌ Não enviar", "sh:done")]]
+    else:  # sem gateway/grupo configurado: só prévia para copiar
+        rows = [[("🔄 Outra chamada", "sh:again"), ("✅ Pronto", "sh:done")]]
+    markup = _kb(rows)
+    if len(post) <= CAPTION_LIMIT:
+        await update.effective_message.reply_photo(d.image.data, caption=post, reply_markup=markup)
+    else:  # post longo estoura a legenda: foto e texto separados
+        await update.effective_message.reply_photo(d.image.data)
+        await _reply(update, post, reply_markup=markup, disable_web_page_preview=True)
+    return SHARE
+
+
+def _can_send(ctx: ContextTypes.DEFAULT_TYPE, d: Draft) -> bool:
+    return bool(_cfg(ctx).whatsapp and d.site.share and d.site.share.group_id)
+
+
+def _wa(ctx: ContextTypes.DEFAULT_TYPE) -> EvolutionClient:
+    wa: EvolutionClient | None = ctx.application.bot_data.get("wa")
+    if wa is None:
+        wa = ctx.application.bot_data["wa"] = EvolutionClient(_cfg(ctx).whatsapp)
+    return wa
+
+
+async def _send_to_group(update: Update, ctx: ContextTypes.DEFAULT_TYPE, d: Draft, lock: asyncio.Lock) -> int:
+    group, post = d.site.share.group_id, d.share_post
+    async with lock:
+        await _reply(update, "⏳ Enviando ao grupo…")
+        try:
+            wa = _wa(ctx)
+            caption = post if len(post) <= CAPTION_LIMIT else None
+            await wa.send_image(group, d.image.data, d.image.content_type, d.image.filename, caption)
+            if caption is None:
+                await wa.send_text(group, post)
+        except WhatsAppError as e:
+            log.warning("Envio ao grupo falhou (user=%s site=%s): %s", update.effective_user.id, d.site_key, e)
+            await _reply(update, f"❌ {e}",
+                         reply_markup=_kb([[("🔁 Tentar de novo", "sh:send"), ("❌ Não enviar", "sh:done")]]))
+            return SHARE
+    await _reply(update, "✅ Post enviado ao grupo!\nEnvie /novo para cadastrar outro.")
+    ctx.user_data.pop(DRAFT, None)
+    return ConversationHandler.END
+
+
+async def groups_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """Lista os grupos do número conectado, para copiar o ID para share.group_id."""
+    if not _cfg(ctx).sites_for(update.effective_user.id):
+        await _reply(update, "Você não tem permissão para usar este bot.")
+        return
+    if not _cfg(ctx).whatsapp:
+        await _reply(update, "O WhatsApp não está configurado (bloco whatsapp: no sites.yaml).")
+        return
+    term = " ".join(ctx.args or []).strip().lower()
+    await _reply(update, "⏳ Buscando os grupos… (pode levar quase um minuto)")
+    try:
+        groups = await _wa(ctx).list_groups()
+    except WhatsAppError as e:
+        await _reply(update, f"❌ {e}")
+        return
+    total = len(groups)
+    if term:
+        groups = [g for g in groups if term in g[1].lower()]
+    groups.sort(key=lambda g: g[1].lower())
+    if not groups:
+        await _reply(update, f"Nenhum grupo com “{term}” no nome." if term else "Nenhum grupo encontrado nesse número.")
+        return
+    shown = groups[:GROUPS_SHOWN]
+    lines = [f"• {name or '(sem nome)'}\n  {gid}" for gid, name in shown]
+    foot = f"\n\nMostrando {len(shown)} de {len(groups)}." if len(groups) > len(shown) else ""
+    if foot or not term and total > 10:
+        foot += "\nFiltre pelo nome: /grupos nome do grupo"
+    await _reply(update, "Grupos do WhatsApp (copie o ID para o .env):\n\n" + "\n".join(lines) + foot)
 
 
 async def cancel(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
@@ -345,6 +454,7 @@ def build_handler() -> ConversationHandler:
                 CallbackQueryHandler(on_answer_cb, pattern=r"^(c|b|m|skip)(:|$)"),
             ],
             REVIEW: [CallbackQueryHandler(on_review, pattern=r"^(ok|edit|cancel|e:.+)$")],
+            SHARE: [CallbackQueryHandler(on_share, pattern=r"^sh:(yes|no|again|send|done)$")],
         },
         fallbacks=[CommandHandler("cancelar", cancel), CommandHandler("novo", start, filters=private)],
         allow_reentry=True,
@@ -354,3 +464,4 @@ def build_handler() -> ConversationHandler:
 def register(app: Application) -> None:
     app.add_handler(build_handler())
     app.add_handler(CommandHandler(["start", "ajuda", "help"], help_cmd))
+    app.add_handler(CommandHandler("grupos", groups_cmd, filters=filters.ChatType.PRIVATE))

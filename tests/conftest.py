@@ -12,7 +12,9 @@ EXAMPLE = Path(__file__).parent.parent / "sites.example.yaml"
 
 @pytest.fixture
 def app_config() -> AppConfig:
-    env = {"LLMAGAZINE_URL": "https://shop.test", "LLMAGAZINE_USER": "bot", "LLMAGAZINE_PASS": "pw"}
+    env = {"LLMAGAZINE_URL": "https://shop.test", "LLMAGAZINE_USER": "bot", "LLMAGAZINE_PASS": "pw",
+           "LLMAGAZINE_WHATSAPP": "5534991738581", "LLMAGAZINE_WHATSAPP_GROUP": "120363111@g.us",
+           "EVOLUTION_URL": "https://evo.test/", "EVOLUTION_INSTANCE": "loja", "EVOLUTION_API_KEY": "K"}
     raw = yaml.safe_load(EXAMPLE.read_text(encoding="utf-8"))
     return AppConfig.model_validate(interpolate_env(raw, env))
 
