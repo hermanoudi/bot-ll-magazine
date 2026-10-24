@@ -73,6 +73,18 @@ sites:
       - { key: discount, label: Desconto, type: int, min: 0, max: 100, discount_from: [originalPrice, price] }
       - { key: description, label: Descrição, type: text, required: true, ai: true }
       - { key: colors, label: Cores, type: colors, output: hex, ai: true, prompt: "Cores disponíveis? (separe por vírgula)" }
-      - { key: sizes, label: Tamanhos, type: multichoice, options: [PP, P, M, G, GG, U], default: [PP, P, M, G, GG] }
+      - key: sizes
+        label: Tamanhos
+        type: multichoice
+        ai: true
+        options: [PP, P, M, G, GG, U, "2", "4", "6", "8", "10", "12", "14", "16",
+                  "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44"]
+        default: [PP, P, M, G, GG]
+        ai_hint: >-
+          Escolha a grade conforme o tipo de produto da foto e use apenas uma grade:
+          roupa adulta = letras (PP, P, M, G, GG); calçados = numeração (33 a 44);
+          infantil = idade (2, 4, 6, 8, 10, 12, 14, 16); acessórios (bolsa, cinto, bijuteria,
+          óculos, chapéu etc.) = somente U. Se não identificar os tamanhos exatos, sugira a
+          grade completa daquele tipo.
       - { key: inStock, label: Em estoque, type: bool, default: true, as_int: true }
       - { key: featured, label: Destaque, type: bool, default: false, as_int: true }

@@ -28,8 +28,22 @@ def img():
 
 def test_model_only_ai_fields(site):
     m = build_draft_model(site.fields, {"category": ["feminino"]}, ["preto"])
-    assert set(m.model_fields) == {"name", "category", "description", "colors"}
+    assert set(m.model_fields) == {"name", "category", "description", "colors", "sizes"}
     assert "feminino" in m.model_fields["category"].description
+
+
+def test_sizes_hint_in_description(site):
+    desc = build_draft_model(site.fields, {}, []).model_fields["sizes"].description
+    for expected in ("calçados", "33 a 44", "infantil", "somente U", "PP"):
+        assert expected in desc
+
+
+def test_sizes_sanitized(site):
+    from productbot.fields import sanitize_ai_value
+    spec = next(s for s in site.fields if s.key == "sizes")
+    assert sanitize_ai_value(spec, ["36", "38"]) == ["36", "38"]
+    assert sanitize_ai_value(spec, ["U"]) == ["U"]
+    assert sanitize_ai_value(spec, ["50"]) is None
 
 
 async def test_suggest_ok(site, img):

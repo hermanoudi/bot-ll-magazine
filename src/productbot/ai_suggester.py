@@ -27,7 +27,9 @@ SYSTEM_PROMPT = (
     "Você ajuda a cadastrar produtos de uma loja online brasileira a partir da foto do produto. "
     "Preencha apenas o que for possível inferir com segurança pela imagem (e pela legenda, se houver). "
     "Escreva em português do Brasil. Se não tiver certeza de um campo, deixe-o nulo. "
-    "Nunca invente preço, marca ou medidas."
+    "Nunca invente preço, marca ou medidas. "
+    "Quando um campo trouxer regras de preenchimento, siga-as considerando o tipo de produto da foto "
+    "(ex.: roupa adulta, calçado, infantil, acessório)."
 )
 
 
@@ -46,6 +48,8 @@ def build_draft_model(
             desc += f" Use apenas estes nomes: {', '.join(color_names)}."
         if s.max_len:
             desc += f" Máximo {s.max_len} caracteres."
+        if s.ai_hint:
+            desc += f" {s.ai_hint}"
         fields[s.key] = (_PY_TYPES[s.type] | None, Field(default=None, description=desc))
     return create_model("ProductDraft", **fields)
 

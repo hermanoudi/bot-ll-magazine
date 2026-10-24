@@ -89,6 +89,7 @@ class FieldSpec(BaseModel):
     prompt: str | None = None
     required: bool = False
     ai: bool = False
+    ai_hint: str | None = None  # regra extra só para a IA (não aparece na pergunta ao usuário)
     default: Any = None
     max_len: int | None = None
     min: int | None = None
